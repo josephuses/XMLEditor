@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moodle XML Editor & Visualizer</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/closetag.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #0f6cbf;
+            --primary-hover: #0d5aa0;
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --border: #dee2e6;
+            --correct: #d4edda;
+            --correct-text: #155724;
+            --wrong: #f8d7da;
+            --wrong-text: #721c24;
+            --snippet-bg: #e9ecef;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: #333;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            background: var(--card-bg);
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        header h1 {
+            color: var(--primary);
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            font-size: 0.85em;
+        }
+
+        button:hover { background-color: var(--primary-hover); }
+        button.secondary-btn { background-color: #6c757d; }
+        button.secondary-btn:hover { background-color: #5a6268; }
+        button.accent-btn { background-color: #28a745; }
+        button.accent-btn:hover { background-color: #218838; }
+        button.warn-btn { background-color: #dc3545; }
+        button.warn-btn:hover { background-color: #c82333; }
+
+        /* Main Workspace */
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Panes */
+        .pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .editor-pane {
+            border-right: 2px solid var(--border);
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .viewer-pane {
+            background: var(--bg);
+        }
+
+        /* Toolbar / Snippets */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+            justify-content: space-between;
+        }
+
+        .snippet-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .snippet-btn {
+            background-color: var(--snippet-bg);
+            color: #333;
+            font-size: 0.85em;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: normal;
+        }
+
+        .snippet-btn:hover { background-color: #dde0e3; }
+
+        /* CodeMirror Overrides */
+        .editor-container {
+            flex: 1;
+            overflow: hidden; 
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .CodeMirror {
+            height: 100%;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Output / Question Cards */
+        .question-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+        }
+
+        .q-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .q-name { font-weight: bold; color: #555; }
+        .q-type { 
+            background: #e9ecef; 
+            padding: 2px 8px; 
+            border-radius: 12px; 
+            font-size: 0.85em; 
+            color: #495057; 
+            text-transform: uppercase;
+        }
+
+        .q-text { font-size: 1.1em; margin-bottom: 20px; }
+        .q-text img { max-width: 100%; height: auto; }
+
+        /* Answers */
+        .answers-list { list-style: none; padding: 0; margin: 0; }
+        
+        .answer-item {
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .answer-content { flex-grow: 1; }
+        
+        .grade-badge {
+            font-size: 0.85em;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 10px;
+            white-space: nowrap;
+        }
+
+        .grade-100 { background-color: var(--correct); color: var(--correct-text); }
+        .grade-partial { background-color: #fff3cd; color: #856404; }
+        .grade-0 { background-color: var(--wrong); color: var(--wrong-text); }
+
+        .feedback {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+            border-left: 3px solid #ccc;
+            padding-left: 8px;
+        }
+        
+        .gen-feedback {
+            margin-top: 15px;
+            background: #eef;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 4px solid var(--primary);
+        }
+
+        .numerical-tolerance { font-size: 0.9em; color: #666; }
+
+        #error-msg {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Moodle XML Editor</h1>
+    <div class="header-controls">
+        <input type="file" id="fileInput" accept=".xml" style="display: none;">
+        <button class="secondary-btn" onclick="document.getElementById('fileInput').click()">Load File</button>
+        <button class="secondary-btn" id="saveBtn" onclick="handleSaveAndRender()">Save (Ctrl+S)</button>
+        <button class="warn-btn" onclick="clearAll()">Clear</button>
+        <button class="accent-btn" onclick="beautifyCode()">Beautify</button>
+        <button class="accent-btn" onclick="downloadXML()">Download XML</button>
+        <button onclick="parseXML()">Render Preview</button>
+    </div>
+</header>
+
+<div class="workspace">
+    <div class="pane editor-pane">
+        <div class="toolbar">
+            <div class="snippet-group">
+                <button class="snippet-btn" onclick="insertSnippet('quiz')">Quiz Wrapper</button>
+                <button class="snippet-btn" onclick="insertSnippet('multichoice')">Multiple Choice</button>
+                <button class="snippet-btn" onclick="insertSnippet('truefalse')">True/False</button>
+                <button class="snippet-btn" onclick="insertSnippet('numerical')">Numerical</button>
+                <button class="snippet-btn" onclick="insertSnippet('shortanswer')">Short Answer</button>
+            </div>
+            <div class="snippet-group">
+                <button class="snippet-btn" onclick="editor.undo()" title="Ctrl+Z">↶ Undo</button>
+                <button class="snippet-btn" onclick="editor.redo()" title="Ctrl+Y">↷ Redo</button>
+            </div>
+        </div>
+        <div class="editor-container">
+            <textarea id="xmlInput"></textarea>
+        </div>
+    </div>
+
+    <div class="pane viewer-pane">
+        <div id="error-msg"></div>
+        <div id="output">
+            <p style="text-align:center; color:#666; margin-top: 50px;">
+                Enter XML on the left and click "Render Preview" (or press Ctrl+S) to visualize.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Initialize CodeMirror with Keymaps ---
+    const editor = CodeMirror.fromTextArea(document.getElementById("xmlInput"), {
+        mode: "xml",
+        lineNumbers: true,
+        autoCloseTags: true, 
+        theme: "default",
+        lineWrapping: true,
+        historyEventDelay: 300, // Group fast typing into single undo steps
+        extraKeys: {
+            "Tab": function(cm){ cm.replaceSelection("  ", "end"); },
+            "Ctrl-S": function(cm){ handleSaveAndRender(); },
+            "Cmd-S": function(cm){ handleSaveAndRender(); }, // Mac support
+            "Ctrl-Z": function(cm){ cm.undo(); },
+            "Cmd-Z": function(cm){ cm.undo(); },
+            "Ctrl-Y": function(cm){ cm.redo(); },
+            "Cmd-Shift-Z": function(cm){ cm.redo(); }
+        }
+    });
+
+    const outputDiv = document.getElementById('output');
+    const errorMsg = document.getElementById('error-msg');
+    const saveBtn = document.getElementById('saveBtn');
+
+    // --- Global Save Listener (Catch Ctrl+S outside of editor focus) ---
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            handleSaveAndRender();
+        }
+    });
+
+    // --- On Load: Restore Saved Progress ---
+    window.onload = function() {
+        const savedData = localStorage.getItem('moodle_xml_save');
+        if (savedData) {
+            editor.setValue(savedData);
+            editor.clearHistory(); // Prevent undoing to a blank state immediately after load
+            parseXML(); 
+        }
+    };
+
+    // --- 1. File Upload Logic ---
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            editor.setValue(e.target.result);
+            editor.clearHistory();
+            parseXML();
+        };
+        reader.readAsText(file);
+        this.value = ''; 
+    });
+
+    function clearAll() {
+        if(confirm("Are you sure you want to clear the editor? This will also wipe your saved progress.")) {
+            editor.setValue('');
+            editor.clearHistory();
+            outputDiv.innerHTML = '<p style="text-align:center; color:#666; margin-top: 50px;">Enter XML on the left and click "Render Preview" to visualize.</p>';
+            errorMsg.style.display = 'none';
+            localStorage.removeItem('moodle_xml_save'); 
+            editor.focus();
+        }
+    }
+
+    // --- 2. Save, Render, and Download Logic ---
+    function handleSaveAndRender() {
+        const xmlContent = editor.getValue();
+        
+        // 1. Save to local storage
+        localStorage.setItem('moodle_xml_save', xmlContent);
+        
+        // 2. Visual feedback on button
+        const originalText = saveBtn.innerText;
+        saveBtn.innerText = "Saved!";
+        saveBtn.style.backgroundColor = "#28a745"; 
+        
+        setTimeout(() => {
+            saveBtn.innerText = originalText;
+            saveBtn.style.backgroundColor = ""; 
+        }, 1500);
+
+        // 3. Render the preview
+        parseXML();
+    }
+
+    function downloadXML() {
+        const xmlContent = editor.getValue();
+        if (!xmlContent.trim()) {
+            alert("The editor is empty. There is nothing to download.");
+            return;
+        }
+
+        const blob = new Blob([xmlContent], { type: 'text/xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        
+        a.href = url;
+        a.download = 'moodle_questions.xml';
+        document.body.appendChild(a);
+        a.click();
+        
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // --- 3. Code Beautifier ---
+    function beautifyCode() {
+        let xml = editor.getValue();
+        if (!xml.trim()) return;
+
+        let formatted = '';
+        let pad = 0;
+        
+        xml = xml.replace(/(>)(<)(\/*)/g, '$1\r\n$2$3');
+        
+        xml.split('\r\n').forEach(function(node) {
+            let indent = 0;
+            if (node.match( /.+<\/\w[^>]*>$/ )) {
+                indent = 0;
+            } else if (node.match( /^<\/\w/ )) {
+                if (pad !== 0) pad -= 1;
+            } else if (node.match( /^<\w[^>]*[^\/]>.*$/ )) {
+                indent = 1;
+            }
+
+            formatted += '  '.repeat(pad) + node + '\r\n';
+            pad += indent;
+        });
+
+        editor.setValue(formatted.trim());
+    }
+
+    // --- 4. Snippet Injection Logic ---
+    const snippets = {
+        'quiz': `<?xml version="1.0" encoding="UTF-8"?>\n<quiz>\n\n  \n\n</quiz>`,
+        'multichoice': `  <question type="multichoice">\n    <name>\n      <text>Question Name</text>\n    </name>\n    <questiontext format="html">\n      <text><![CDATA[<p>What is the question?</p>]]></text>\n    </questiontext>\n    <generalfeedback format="html">\n      <text><![CDATA[<p>General feedback goes here.</p>]]></text>\n    </generalfeedback>\n    <defaultgrade>1.0</defaultgrade>\n    <single>true</single>\n    <shuffleanswers>true</shuffleanswers>\n    <answer fraction="100" format="html">\n      <text><![CDATA[<p>Correct Answer</p>]]></text>\n      <feedback format="html">\n        <text><![CDATA[<p>Good job!</p>]]></text>\n      </feedback>\n    </answer>\n    <answer fraction="0" format="html">\n      <text><![CDATA[<p>Wrong Answer</p>]]></text>\n      <feedback format="html">\n        <text><![CDATA[<p>Try again.</p>]]></text>\n      </feedback>\n    </answer>\n  </question>\n`,
+        'truefalse': `  <question type="truefalse">\n    <name>\n      <text>True/False Question</text>\n    </name>\n    <questiontext format="html">\n      <text><![CDATA[<p>The earth is flat.</p>]]></text>\n    </questiontext>\n    <answer fraction="0" format="moodle_auto_format">\n      <text>true</text>\n      <feedback format="html">\n        <text><![CDATA[<p>Incorrect.</p>]]></text>\n      </feedback>\n    </answer>\n    <answer fraction="100" format="moodle_auto_format">\n      <text>false</text>\n      <feedback format="html">\n        <text><![CDATA[<p>Correct.</p>]]></text>\n      </feedback>\n    </answer>\n  </question>\n`,
+        'numerical': `  <question type="numerical">\n    <name>\n      <text>Numerical Question</text>\n    </name>\n    <questiontext format="html">\n      <text><![CDATA[<p>What is 10 + 15?</p>]]></text>\n    </questiontext>\n    <answer fraction="100">\n      <text>25</text>\n      <tolerance>0</tolerance>\n    </answer>\n  </question>\n`,
+        'shortanswer': `  <question type="shortanswer">\n    <name>\n      <text>Short Answer</text>\n    </name>\n    <questiontext format="html">\n      <text><![CDATA[<p>What is the capital of France?</p>]]></text>\n    </questiontext>\n    <usecase>0</usecase>\n    <answer fraction="100" format="moodle_auto_format">\n      <text>Paris</text>\n    </answer>\n  </question>\n`
+    };
+
+    function insertSnippet(type) {
+        const text = snippets[type];
+        editor.replaceSelection(text);
+        editor.focus();
+        if (type !== 'quiz') handleSaveAndRender();
+    }
+
+    // --- 5. XML Parsing and Rendering ---
+    function parseXML() {
+        const rawXML = editor.getValue();
+        outputDiv.innerHTML = '';
+        errorMsg.style.display = 'none';
+
+        if (!rawXML.trim()) {
+            outputDiv.innerHTML = '<p style="text-align:center; color:#666;">Waiting for input...</p>';
+            return;
+        }
+
+        try {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(rawXML, "text/xml");
+            
+            const parseError = xmlDoc.getElementsByTagName("parsererror");
+            if (parseError.length > 0) {
+                let errMsg = "Invalid XML format.";
+                if(parseError[0].querySelector('div')) {
+                    errMsg = parseError[0].querySelector('div').textContent;
+                }
+                throw new Error(errMsg);
+            }
+
+            const questions = xmlDoc.getElementsByTagName("question");
+            let count = 0;
+
+            for (let i = 0; i < questions.length; i++) {
+                const q = questions[i];
+                const type = q.getAttribute("type");
+                if (type === "category") continue;
+
+                count++;
+                const card = createQuestionCard(q, type, count);
+                outputDiv.appendChild(card);
+            }
+
+            if (count === 0) {
+                outputDiv.innerHTML = '<p style="text-align:center;">No valid questions found. Make sure questions are wrapped inside a <code>&lt;quiz&gt;</code> tag.</p>';
+            }
+            
+            if (window.MathJax) {
+                MathJax.typesetPromise([outputDiv]).catch((err) => console.log(err));
+            }
+
+        } catch (e) {
+            errorMsg.innerText = `Error parsing XML: ${e.message}`;
+            errorMsg.style.display = 'block';
+        }
+    }
+
+    function getNodeVal(parent, tagName) {
+        const node = parent.getElementsByTagName(tagName)[0];
+        if (node) {
+            const textNode = node.getElementsByTagName("text")[0];
+            if (textNode) return textNode.textContent;
+            return node.textContent;
+        }
+        return "";
+    }
+
+    function createQuestionCard(qNode, type, index) {
+        const name = getNodeVal(qNode, "name");
+        let text = getNodeVal(qNode, "questiontext");
+        
+        const div = document.createElement("div");
+        div.className = "question-card";
+
+        let html = `
+            <div class="q-header">
+                <span class="q-name">Q${index}: ${name}</span>
+                <span class="q-type">${type}</span>
+            </div>
+            <div class="q-text">${text}</div>
+            <h4>Answers:</h4>
+            <ul class="answers-list">
+        `;
+
+        const answers = qNode.getElementsByTagName("answer");
+        
+        if (type === 'numerical') {
+            for (let j = 0; j < answers.length; j++) {
+                html += renderAnswer(answers[j], true);
+            }
+        } 
+        else if (type === 'matching') {
+            const subquestions = qNode.getElementsByTagName("subquestion");
+            for (let j = 0; j < subquestions.length; j++) {
+                const subQ = subquestions[j];
+                const subText = getNodeVal(subQ, "text") || getNodeVal(subQ, "questiontext"); 
+                const subAns = getNodeVal(subQ, "answertext") || subQ.getElementsByTagName("answer")[0]?.getElementsByTagName("text")[0]?.textContent;
+                
+                html += `
+                    <li class="answer-item">
+                        <div class="answer-content">
+                            <strong>Match:</strong> ${subText} &rarr; ${subAns}
+                        </div>
+                    </li>
+                `;
+            }
+        }
+        else {
+            for (let j = 0; j < answers.length; j++) {
+                html += renderAnswer(answers[j], false);
+            }
+        }
+
+        html += `</ul>`;
+        
+        const genFeedback = getNodeVal(qNode, "generalfeedback");
+        if(genFeedback) {
+            html += `<div class="gen-feedback">
+                        <strong>General Feedback / Solution:</strong> ${genFeedback}
+                     </div>`;
+        }
+
+        div.innerHTML = html;
+        return div;
+    }
+
+    function renderAnswer(ansNode, isNumerical) {
+        let fraction = parseFloat(ansNode.getAttribute("fraction"));
+        if (isNaN(fraction)) fraction = 0;
+        
+        const ansText = getNodeVal(ansNode, "text") || ansNode.textContent; 
+        const feedback = getNodeVal(ansNode, "feedback");
+        
+        let badgeClass = "grade-0";
+        if (fraction >= 100) badgeClass = "grade-100";
+        else if (fraction > 0) badgeClass = "grade-partial";
+
+        let extraInfo = "";
+        if (isNumerical) {
+            const tolNode = ansNode.getElementsByTagName("tolerance")[0];
+            if(tolNode) extraInfo = `<br><span class="numerical-tolerance">(&plusmn; ${tolNode.textContent})</span>`;
+        }
+
+        return `
+            <li class="answer-item">
+                <div class="answer-content">
+                    ${ansText} ${extraInfo}
+                    ${feedback ? `<div class="feedback">Feedback: ${feedback}</div>` : ''}
+                </div>
+                <span class="grade-badge ${badgeClass}">${fraction}%</span>
+            </li>
+        `;
+    }
+</script>
+
+</body>
+</html>
